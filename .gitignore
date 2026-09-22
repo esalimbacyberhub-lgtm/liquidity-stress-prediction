@@ -1,0 +1,16 @@
+# Competition data (download from Zindi, don't commit)
+data/*.csv
+
+# Generated outputs
+submission.csv
+*.txt.bak
+
+# Python
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+.venv/
+venv/
+
+# OS
+.DS_Store
