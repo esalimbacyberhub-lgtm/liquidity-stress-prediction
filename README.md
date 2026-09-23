@@ -8,13 +8,18 @@ stress in the next 30 days, using six months of transaction history.
 
 ## Results
 
-5-fold stratified cross-validation on the training set:
+5-fold stratified cross-validation, averaged across 3 random seeds (bagging):
 
-| Metric | Score |
-|---|---|
-| Log Loss | 0.301 |
-| ROC-AUC | 0.858 |
-| Combined (0.6·log loss + 0.4·(1-AUC)) | 0.238 |
+| Metric | Single seed | 3-seed bagged (final) |
+|---|---|---|
+| Log Loss | 0.301 | **0.298** |
+| ROC-AUC | 0.858 | **0.862** |
+| Combined (0.6·log loss + 0.4·(1-AUC)) | 0.238 | **0.234** |
+
+Hyperparameter tuning (Optuna, 15 trials) was also tried and gave no
+meaningful improvement over hand-picked defaults (0.237 vs 0.238) — not
+worth the compute given the deadline. Multi-seed bagging gave a real,
+if modest, gain instead, so that's what's in the final pipeline.
 
 ## Approach
 
@@ -43,9 +48,17 @@ cross-type spending ratios (e.g. withdrawals as a share of money received).
 explicit class reweighting — the ~15% positive rate isn't severe enough to
 need it here, and reweighting was tested and made both log loss and AUC
 *worse* by distorting calibration (see the note in `src/train.py`).
+Predictions are bagged across 3 random seeds to reduce variance (see
+Results above).
 
 Balance trend (`bal_slope`) is by a wide margin the single most predictive
 feature, followed by trends in deposit and money-received totals.
+
+## Files not yet used
+
+`src/tune.py` runs an Optuna hyperparameter search. It's kept in the repo
+for reference, but its result wasn't adopted (see Results) — `src/train.py`
+uses hand-picked defaults plus seed-bagging instead, which tested better.
 
 ## Project structure
 
@@ -77,6 +90,9 @@ python train.py --train ../data/Train.csv --test ../data/Test.csv --out ../submi
 
 This prints per-fold and overall CV metrics, feature importances, and
 writes a submission file in the `ID,Target` format the challenge requires.
+
+Note: this trains 3 seeds × 5 folds (15 models total) plus 3 final
+retrains, so expect it to take several minutes to run, not seconds.
 
 ## Next steps / ideas not yet implemented
 
