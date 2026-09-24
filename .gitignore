@@ -12,5 +12,8 @@ __pycache__/
 .venv/
 venv/
 
+# CatBoost auto-generated logging directory
+catboost_info/
+
 # OS
 .DS_Store

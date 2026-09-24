@@ -15,7 +15,17 @@ stress in the next 30 days, using six months of transaction history.
 | Single seed, baseline features | 0.301 | 0.858 | 0.238 |
 | Hyperparameter tuning (no gain, not adopted) | 0.301 | 0.858 | 0.237 |
 | 3-seed bagged, baseline features | 0.298 | 0.862 | 0.234 |
-| **3-seed bagged + acceleration/composition/peer-relative features (final)** | **0.296** | **0.865** | **0.232** |
+| 3-seed bagged + acceleration/composition/peer-relative features | 0.296 | 0.865 | 0.232 |
+| CatBoost, same features, native categoricals, 2-seed bagged | 0.296 | 0.864 | 0.232 |
+| **LightGBM + CatBoost blend, 50/50 (final)** | **0.295** | **0.867** | **0.230** |
+
+Model blending gave the single biggest gain of any change tried. LightGBM
+and CatBoost score almost identically alone, but make different enough
+errors that averaging their predictions beats either individually — a real
+ensembling effect, not just variance reduction like seed-bagging. The blend
+weight (50/50) was chosen via a CV grid search over weights from 0 to 1 in
+0.05 steps; the combined score was fairly flat between 0.40-0.60, so 0.50
+is a safe, non-overfit choice rather than a sharp optimum.
 
 The single most predictive feature in the final model is `bal_slope_z_by_segment`
 — a customer's balance trend compared to peers in the same `segment` — by a
@@ -69,8 +79,9 @@ Results above).
 ## Files not yet used
 
 `src/tune.py` runs an Optuna hyperparameter search. It's kept in the repo
-for reference, but its result wasn't adopted (see Results) — `src/train.py`
-uses hand-picked defaults plus seed-bagging instead, which tested better.
+for reference, but its result wasn't adopted (see Results) — the final
+pipeline uses hand-picked defaults plus seed-bagging and model blending
+instead, which both tested better.
 
 ## Project structure
 
@@ -82,8 +93,11 @@ uses hand-picked defaults plus seed-bagging instead, which tested better.
 ├── notebooks/
 │   └── eda.ipynb          # exploratory analysis behind the findings above
 └── src/
-    ├── features.py        # feature engineering (trend/volatility/ratio features)
-    └── train.py           # CV training, evaluation, submission generation
+    ├── features.py        # feature engineering (trend/volatility/ratio/peer-relative features)
+    ├── train.py            # LightGBM: CV training, evaluation, submission generation
+    ├── train_catboost.py   # CatBoost: same features, native categorical handling
+    ├── blend.py            # trains both models and blends predictions (final pipeline)
+    └── tune.py             # Optuna hyperparameter search (kept for reference, not adopted)
 ```
 
 ## Data
@@ -94,20 +108,25 @@ from the Zindi challenge page and place them in `data/`.
 
 ## Running it
 
+For the final blended submission (recommended):
 ```bash
 pip install -r requirements.txt
 cd src
-python train.py --train ../data/Train.csv --test ../data/Test.csv --out ../submission.csv
+python blend.py --train ../data/Train.csv --test ../data/Test.csv --out ../submission.csv
 ```
 
-This prints per-fold and overall CV metrics, feature importances, and
-writes a submission file in the `ID,Target` format the challenge requires.
+To run either model individually:
+```bash
+python train.py --train ../data/Train.csv --test ../data/Test.csv --out ../submission_lgb.csv
+python train_catboost.py --train ../data/Train.csv --test ../data/Test.csv --out ../submission_cb.csv
+```
 
-Note: this trains 3 seeds × 5 folds (15 models total) plus 3 final
-retrains, so expect it to take several minutes to run, not seconds.
+Note: `blend.py` trains both models from scratch (LightGBM: 3 seeds × 5
+folds; CatBoost: 2 seeds × 5 folds), so expect 15-20 minutes to run, not
+seconds.
 
 ## Next steps / ideas not yet implemented
 
-- Model diversity: ensemble LightGBM with a different model type (XGBoost/CatBoost) rather than just averaging seeds of the same model
 - Target/frequency encoding for `region` instead of one-hot
 - Interaction features between balance trend and other categoricals (only segment/earning_pattern tried so far)
+- Stacking (a meta-model on top of LightGBM + CatBoost predictions) instead of a fixed-weight blend
