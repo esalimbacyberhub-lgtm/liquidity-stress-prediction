@@ -26,7 +26,7 @@ from features import ID_COL, TARGET_COL, add_peer_relative_features, build_featu
 import train as lgb_train
 import train_catboost as cb_train
 
-BLEND_WEIGHT_LGB = 0.5  # found via CV grid search; see README
+BLEND_WEIGHT_LGB = 0.60  # found via CV grid search on the expanded feature set; see README
 
 
 def blended_score(y_true, y_pred_proba) -> dict:

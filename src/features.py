@@ -108,7 +108,16 @@ def add_peer_relative_features(train_feat: pd.DataFrame, test_feat: pd.DataFrame
     """
     train_feat = train_feat.copy()
     test_feat = test_feat.copy()
-    base_cols = ["bal_slope", "bal_m1_m6_diff"]
+    base_cols = [
+        "bal_slope",
+        "bal_m1_m6_diff",
+        "bal_cv",
+        "deposit_total_value_slope",
+        "received_total_value_slope",
+        "withdraw_total_value_slope",
+        "transfer_from_bank_total_value_slope",
+    ]
+    base_cols = [c for c in base_cols if c in train_feat.columns]
     group_cols = ["segment", "earning_pattern"]
 
     for group_col in group_cols:

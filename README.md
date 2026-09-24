@@ -15,23 +15,35 @@ stress in the next 30 days, using six months of transaction history.
 | Single seed, baseline features | 0.301 | 0.858 | 0.238 |
 | Hyperparameter tuning (no gain, not adopted) | 0.301 | 0.858 | 0.237 |
 | 3-seed bagged, baseline features | 0.298 | 0.862 | 0.234 |
-| 3-seed bagged + acceleration/composition/peer-relative features | 0.296 | 0.865 | 0.232 |
+| 3-seed bagged + acceleration/composition/peer-relative (balance only) | 0.296 | 0.865 | 0.232 |
 | CatBoost, same features, native categoricals, 2-seed bagged | 0.296 | 0.864 | 0.232 |
-| **LightGBM + CatBoost blend, 50/50 (final)** | **0.295** | **0.867** | **0.230** |
+| LightGBM + CatBoost blend, 50/50 | 0.295 | 0.867 | 0.230 |
+| LightGBM, peer-relative expanded to 4 more trend features | 0.294 | 0.868 | 0.229 |
+| CatBoost, same expanded features, 2-seed bagged | 0.295 | 0.866 | 0.230 |
+| **LightGBM + CatBoost blend, 60/40 (final)** | **0.294** | **0.869** | **0.228** |
 
-Model blending gave the single biggest gain of any change tried. LightGBM
-and CatBoost score almost identically alone, but make different enough
-errors that averaging their predictions beats either individually — a real
-ensembling effect, not just variance reduction like seed-bagging. The blend
-weight (50/50) was chosen via a CV grid search over weights from 0 to 1 in
-0.05 steps; the combined score was fairly flat between 0.40-0.60, so 0.50
-is a safe, non-overfit choice rather than a sharp optimum.
+Model blending gave the single biggest gain of any change tried, and
+extending the peer-relative z-score trick (originally just balance trend
+vs. segment) to also cover deposit, received, withdraw, and bank-transfer
+trends gave the second-biggest gain — both models improved when given the
+richer feature set, confirming the peer-relative approach generalizes
+beyond the one feature it was first tried on.
+
+The blend weight shifted from 50/50 to 60/40 (favoring LightGBM slightly)
+after the feature expansion, found via the same CV grid search approach
+(see `src/blend.py`).
 
 The single most predictive feature in the final model is `bal_slope_z_by_segment`
 — a customer's balance trend compared to peers in the same `segment` — by a
 wide margin (more than double the importance of the next feature). This
 validates the idea that "is this normal for someone like you" carries more
 signal than the raw trend alone.
+
+**Explored and explicitly not worth pursuing:** target/frequency encoding
+for `region` — checked the data first and found stress rates nearly
+identical across all 7 regions (13.4%-15.5%), so the category carries weak
+signal regardless of encoding, and one-hot isn't a bottleneck at only 7
+categories. Skipped before investing time in it.
 
 ## Approach
 
@@ -127,6 +139,6 @@ seconds.
 
 ## Next steps / ideas not yet implemented
 
-- Target/frequency encoding for `region` instead of one-hot
-- Interaction features between balance trend and other categoricals (only segment/earning_pattern tried so far)
 - Stacking (a meta-model on top of LightGBM + CatBoost predictions) instead of a fixed-weight blend
+- Extending peer-relative z-scores to gender/smartphone/region groupings (only segment/earning_pattern tried)
+- A third model type (e.g. XGBoost) added to the blend
