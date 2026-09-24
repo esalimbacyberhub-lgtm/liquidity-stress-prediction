@@ -10,16 +10,18 @@ stress in the next 30 days, using six months of transaction history.
 
 5-fold stratified cross-validation, averaged across 3 random seeds (bagging):
 
-| Metric | Single seed | 3-seed bagged (final) |
-|---|---|---|
-| Log Loss | 0.301 | **0.298** |
-| ROC-AUC | 0.858 | **0.862** |
-| Combined (0.6·log loss + 0.4·(1-AUC)) | 0.238 | **0.234** |
+| Version | Log Loss | ROC-AUC | Combined (0.6·LL + 0.4·(1-AUC)) |
+|---|---|---|---|
+| Single seed, baseline features | 0.301 | 0.858 | 0.238 |
+| Hyperparameter tuning (no gain, not adopted) | 0.301 | 0.858 | 0.237 |
+| 3-seed bagged, baseline features | 0.298 | 0.862 | 0.234 |
+| **3-seed bagged + acceleration/composition/peer-relative features (final)** | **0.296** | **0.865** | **0.232** |
 
-Hyperparameter tuning (Optuna, 15 trials) was also tried and gave no
-meaningful improvement over hand-picked defaults (0.237 vs 0.238) — not
-worth the compute given the deadline. Multi-seed bagging gave a real,
-if modest, gain instead, so that's what's in the final pipeline.
+The single most predictive feature in the final model is `bal_slope_z_by_segment`
+— a customer's balance trend compared to peers in the same `segment` — by a
+wide margin (more than double the importance of the next feature). This
+validates the idea that "is this normal for someone like you" carries more
+signal than the raw trend alone.
 
 ## Approach
 
@@ -44,15 +46,25 @@ This drove the feature engineering: for every transaction type and metric,
 coefficient of variation, and month-1-vs-6-month-average ratio, plus
 cross-type spending ratios (e.g. withdrawals as a share of money received).
 
+Three further feature groups were added after the initial model (see
+Results table):
+- **Acceleration** — whether a decline is speeding up or slowing down
+  (recent 3-month change vs. prior 3-month change), not just the overall
+  6-month direction
+- **Peer-relative z-scores** — a customer's balance trend compared to
+  others in the same `segment`/`earning_pattern` (group stats computed from
+  train only, to avoid leakage) — this turned out to be the single most
+  useful feature in the model
+- **Spending composition** — what share of a customer's total transaction
+  value/volume each type (withdrawals, paybill, etc.) represents in the
+  most recent month
+
 **Model:** LightGBM (binary classification), 5-fold stratified CV, no
 explicit class reweighting — the ~15% positive rate isn't severe enough to
 need it here, and reweighting was tested and made both log loss and AUC
 *worse* by distorting calibration (see the note in `src/train.py`).
 Predictions are bagged across 3 random seeds to reduce variance (see
 Results above).
-
-Balance trend (`bal_slope`) is by a wide margin the single most predictive
-feature, followed by trends in deposit and money-received totals.
 
 ## Files not yet used
 
@@ -96,7 +108,6 @@ retrains, so expect it to take several minutes to run, not seconds.
 
 ## Next steps / ideas not yet implemented
 
-- Hyperparameter tuning (currently using reasonable defaults, not tuned)
+- Model diversity: ensemble LightGBM with a different model type (XGBoost/CatBoost) rather than just averaging seeds of the same model
 - Target/frequency encoding for `region` instead of one-hot
-- Interaction features between balance trend and earning pattern
-- Model ensembling (LightGBM + logistic regression blend) for the log-loss component
+- Interaction features between balance trend and other categoricals (only segment/earning_pattern tried so far)

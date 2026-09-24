@@ -23,7 +23,7 @@ import pandas as pd
 from sklearn.metrics import log_loss, roc_auc_score
 from sklearn.model_selection import StratifiedKFold
 
-from features import ID_COL, TARGET_COL, build_features, encode_categoricals
+from features import ID_COL, TARGET_COL, add_peer_relative_features, build_features, encode_categoricals
 
 N_FOLDS = 5
 RANDOM_STATE = 42
@@ -166,6 +166,7 @@ def main():
 
     train_feat = build_features(train_raw)
     test_feat = build_features(test_raw)
+    train_feat, test_feat = add_peer_relative_features(train_feat, test_feat)
     train_enc, test_enc = encode_categoricals(train_feat, test_feat)
 
     y = train_enc[TARGET_COL]
