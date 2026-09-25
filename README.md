@@ -39,11 +39,39 @@ wide margin (more than double the importance of the next feature). This
 validates the idea that "is this normal for someone like you" carries more
 signal than the raw trend alone.
 
-**Explored and explicitly not worth pursuing:** target/frequency encoding
-for `region` — checked the data first and found stress rates nearly
-identical across all 7 regions (13.4%-15.5%), so the category carries weak
-signal regardless of encoding, and one-hot isn't a bottleneck at only 7
-categories. Skipped before investing time in it.
+**Explored and explicitly not worth pursuing:** target/frequency encoding for
+`region` — checked the data first and found stress rates nearly identical
+across all 7 regions (13.4%-15.5%), so the category carries weak signal
+regardless of encoding, and one-hot isn't a bottleneck at only 7 categories.
+Skipped before investing time in it.
+
+## Where the model plateaus
+
+After the results above, three more attempts were tried and none improved
+on the final blend (0.228):
+
+- **Expanding peer-relative z-scores from 7 to all 29 available trend
+  features** — 0.2327 vs 0.2326 single-seed. No gain; more features isn't
+  automatically better once the informative ones are already covered.
+- **Isotonic calibration** on the blended predictions, to see if log loss
+  specifically could improve without touching AUC (calibration is
+  monotonic, so it can't change ranking) — made log loss slightly *worse*
+  (0.2932 vs 0.2925), which tells us the models were already reasonably
+  well-calibrated. No free gain sitting there.
+- **An outflow-relative-to-arpu feature**, motivated by error analysis
+  below — showed a real single-seed gain (0.2318 vs 0.2326) but washed out
+  under full 3-seed bagging (0.2289 vs 0.2290, noise-level). Redundant with
+  existing features once model variance is averaged out.
+
+**Error analysis finding, worth keeping in mind:** the customers the model
+gets most wrong (confidently predicted low-risk, actually went into
+stress) have *healthy* balance and income trends — the opposite of what
+every feature in this pipeline is built to detect. This suggests a real
+chunk of "liquidity stress next 30 days" is driven by something outside
+the 6-month transaction history entirely (a shock event — job loss,
+medical bill, family emergency), which no amount of historical-pattern
+feature engineering can predict. This is a plausible reason the leaderboard
+tops out around 0.74 rather than near-perfect, not just a modeling gap.
 
 ## Approach
 
