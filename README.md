@@ -86,6 +86,33 @@ medical bill, family emergency), which no amount of historical-pattern
 feature engineering can predict. This is a plausible reason the leaderboard
 tops out around 0.74 rather than near-perfect, not just a modeling gap.
 
+## Ensemble diversity: what else was tried
+
+After the calibration fix above (0.227), two more model-diversity attempts
+were tested and both came back negative -- useful to know, not wasted
+effort:
+
+- **XGBoost as a third model** (`src/train_xgboost.py`) — scores similarly
+  alone (0.234 combined) but correlates 0.987 with LightGBM's predictions
+  (vs. 0.968 for LightGBM-CatBoost). Adding it to the stack gave an
+  identical 0.2271, and the meta-model assigned it essentially zero weight
+  (0.003). Two gradient-boosted tree libraries with similar splitting
+  logic aren't diverse enough to help each other, even from different
+  codebases -- the CatBoost gain came specifically from its different
+  *architecture* (symmetric trees, ordered boosting), not just being a
+  different library.
+- **Logistic regression as a genuinely decorrelated model** — correlates
+  only 0.80 with the tree models (vs. 0.96-0.99 between the trees), so it
+  really is finding different patterns. But it scores far worse alone
+  (0.278 vs ~0.23), and that weakness outweighs its diversity: adding it to
+  the stack gave 0.2272 (no better than without it), with a near-zero,
+  slightly negative learned weight.
+
+Together these suggest the 2-model (LightGBM + CatBoost) stack is a real
+local optimum for this feature set, not a point where more model types
+would help without also finding a way to make the added model both
+different *and* individually strong.
+
 ## Approach
 
 The raw dataset gives one row per customer with 6 months (`m1` = most recent,
@@ -135,6 +162,9 @@ Results above).
 for reference, but its result wasn't adopted (see Results) — the final
 pipeline uses hand-picked defaults plus seed-bagging and model blending
 instead, which both tested better.
+
+`src/train_xgboost.py` trains a third model for the ensemble. Also kept for
+reference, also not adopted — see "Ensemble diversity" above for why.
 
 ## Project structure
 
