@@ -20,7 +20,8 @@ stress in the next 30 days, using six months of transaction history.
 | LightGBM + CatBoost blend, 50/50 | 0.295 | 0.867 | 0.230 |
 | LightGBM, peer-relative expanded to 4 more trend features | 0.294 | 0.868 | 0.229 |
 | CatBoost, same expanded features, 2-seed bagged | 0.295 | 0.866 | 0.230 |
-| **LightGBM + CatBoost blend, 60/40 (final)** | **0.294** | **0.869** | **0.228** |
+| LightGBM + CatBoost blend, 60/40 (fixed weight) | 0.294 | 0.869 | 0.228 |
+| **LightGBM + CatBoost, logistic stacking in logit space (final)** | **0.291** | **0.869** | **0.227** |
 
 Model blending gave the single biggest gain of any change tried, and
 extending the peer-relative z-score trick (originally just balance trend
@@ -32,6 +33,18 @@ beyond the one feature it was first tried on.
 The blend weight shifted from 50/50 to 60/40 (favoring LightGBM slightly)
 after the feature expansion, found via the same CV grid search approach
 (see `src/blend.py`).
+
+**Final combination method: logistic regression stacking in logit space**,
+not a fixed-weight average. A plain probability-space average of the two
+models under-predicted the true positive rate (mean predicted probability
+14.0% vs the actual 15.0%). Fitting a small logistic regression on the two
+models' logit-transformed OOF predictions (5-fold cross-fit, to avoid the
+meta-model overfitting to itself) learns both a combination weight *and*
+an intercept that corrects this calibration gap — 0.228 → 0.227. Verified
+this wasn't just an artifact of the logit transform itself: a fixed-weight
+average computed in logit space gives the identical 0.228 as probability
+space: the gain is specifically from the learned intercept, i.e. a genuine
+calibration fix, not a transform trick.
 
 The single most predictive feature in the final model is `bal_slope_z_by_segment`
 — a customer's balance trend compared to peers in the same `segment` — by a

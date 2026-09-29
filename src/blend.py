@@ -1,13 +1,19 @@
 """
 Blend the LightGBM (train.py) and CatBoost (train_catboost.py) models.
 
-Both models score similarly alone (~0.232 combined each) but make different
-enough errors that averaging their predictions beats either individually.
-A 50/50 blend was found to be optimal via a CV grid search over blend
-weights (see README for the full weight-vs-score table).
+Both models score similarly alone (~0.229 combined each) but make different
+enough errors that combining their predictions beats either individually.
+
+Combination method: logistic regression stacking in logit space, fit via
+5-fold out-of-fold cross-fitting (to avoid the meta-model overfitting to
+itself). This beat a fixed-weight average (0.2279) by finding a real
+calibration correction -- the raw ensemble average under-predicted the
+positive rate by about 1 point (14.0% vs the true 15.0%), and the learned
+intercept term fixes exactly that (0.2271). See README for the full
+comparison.
 
 This script re-runs both models' OOF and test predictions from scratch (it
-does not depend on any cached files from exploration), then blends them.
+does not depend on any cached files from exploration), then stacks them.
 Expect this to take a while: LightGBM does 3 seeds x 5 folds, CatBoost does
 2 seeds x 5 folds -- roughly 15-20 minutes total on modest hardware.
 
@@ -20,19 +26,48 @@ import argparse
 
 import numpy as np
 import pandas as pd
+from scipy.special import logit
+from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import log_loss, roc_auc_score
+from sklearn.model_selection import KFold
 
 from features import ID_COL, TARGET_COL, add_peer_relative_features, build_features, encode_categoricals
 import train as lgb_train
 import train_catboost as cb_train
 
-BLEND_WEIGHT_LGB = 0.60  # found via CV grid search on the expanded feature set; see README
+STACK_FOLDS = 5
+STACK_SEED = 42
 
 
 def blended_score(y_true, y_pred_proba) -> dict:
     ll = log_loss(y_true, y_pred_proba)
     auc = roc_auc_score(y_true, y_pred_proba)
     return {"log_loss": ll, "roc_auc": auc, "combined_lower_is_better": 0.6 * ll + 0.4 * (1 - auc)}
+
+
+def _safe_logit(p: np.ndarray) -> np.ndarray:
+    return logit(np.clip(p, 1e-6, 1 - 1e-6))
+
+
+def stack_oof(lgb_oof: np.ndarray, cb_oof: np.ndarray, y: pd.Series) -> np.ndarray:
+    """Out-of-fold logistic stacking in logit space. Returns OOF stacked predictions."""
+    meta_X = np.column_stack([_safe_logit(lgb_oof), _safe_logit(cb_oof)])
+    kf = KFold(n_splits=STACK_FOLDS, shuffle=True, random_state=STACK_SEED)
+    stacked = np.zeros(len(y))
+    for train_idx, val_idx in kf.split(meta_X):
+        meta = LogisticRegression()
+        meta.fit(meta_X[train_idx], y.iloc[train_idx])
+        stacked[val_idx] = meta.predict_proba(meta_X[val_idx])[:, 1]
+    return stacked
+
+
+def stack_test(lgb_oof: np.ndarray, cb_oof: np.ndarray, y: pd.Series, lgb_test: np.ndarray, cb_test: np.ndarray) -> np.ndarray:
+    """Fit the meta-model on ALL OOF data, apply to test predictions."""
+    meta_X = np.column_stack([_safe_logit(lgb_oof), _safe_logit(cb_oof)])
+    meta = LogisticRegression()
+    meta.fit(meta_X, y)
+    test_meta_X = np.column_stack([_safe_logit(lgb_test), _safe_logit(cb_test)])
+    return meta.predict_proba(test_meta_X)[:, 1]
 
 
 def main():
@@ -86,19 +121,19 @@ def main():
         model.fit(Pool(X_cb, y, cat_features=cat_cols))
         cb_test_preds += model.predict_proba(X_test_cb)[:, 1] / len(cb_train.SEEDS)
 
-    # --- Blend ---
+    # --- Stack (logistic regression in logit space, OOF-fit) ---
     print("\n" + "=" * 60)
-    print("Blending...")
+    print("Stacking...")
     print("=" * 60)
     print("LightGBM OOF:", blended_score(y, lgb_oof))
     print("CatBoost OOF:", blended_score(y, cb_oof))
 
-    blend_oof = BLEND_WEIGHT_LGB * lgb_oof + (1 - BLEND_WEIGHT_LGB) * cb_oof
-    print(f"Blend (w_lgb={BLEND_WEIGHT_LGB}) OOF:", blended_score(y, blend_oof))
+    stacked_oof = stack_oof(lgb_oof, cb_oof, y)
+    print("Stacked OOF:", blended_score(y, stacked_oof))
 
-    blend_test_preds = BLEND_WEIGHT_LGB * lgb_test_preds + (1 - BLEND_WEIGHT_LGB) * cb_test_preds
+    final_test_preds = stack_test(lgb_oof, cb_oof, y, lgb_test_preds, cb_test_preds)
 
-    submission = pd.DataFrame({"ID": test_enc[ID_COL], "Target": blend_test_preds})
+    submission = pd.DataFrame({"ID": test_enc[ID_COL], "Target": final_test_preds})
     submission.to_csv(args.out, index=False)
     print(f"\nSubmission saved to {args.out}")
 
