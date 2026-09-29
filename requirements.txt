@@ -1,10 +1,15 @@
-pandas>=2.0
-numpy>=1.24
-scikit-learn>=1.3
-lightgbm>=4.0
-catboost>=1.2
-xgboost>=2.0
-optuna>=3.0
+# Pinned to exact versions used to generate the reported CV scores and
+# submissions. Zindi's code-review rules require your code to reproduce
+# your leaderboard score, and tree-based models (especially LightGBM/
+# CatBoost/XGBoost) can shift slightly across versions -- pin exact, don't
+# just use >=, if you ever need to hand this in for review.
+pandas==3.0.2
+numpy==2.4.4
+scikit-learn==1.8.0
+lightgbm==4.7.0
+catboost==1.2.10
+xgboost==3.4.1
+optuna==5.0.0
 matplotlib>=3.7
 seaborn>=0.12
 jupyter

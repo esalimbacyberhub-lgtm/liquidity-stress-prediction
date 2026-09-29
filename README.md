@@ -210,6 +210,29 @@ seconds.
 
 ## Next steps / ideas not yet implemented
 
-- Stacking (a meta-model on top of LightGBM + CatBoost predictions) instead of a fixed-weight blend
-- Extending peer-relative z-scores to gender/smartphone/region groupings (only segment/earning_pattern tried)
-- A third model type (e.g. XGBoost) added to the blend
+- Extending peer-relative z-scores to gender/smartphone/region groupings (only segment/earning_pattern tried, and the full-scale expansion to all 29 slopes was tested and didn't help — see "Where the model plateaus")
+- A fourth model that's both diverse AND individually strong (a neural net tuned properly, rather than the quick unoptimized logistic regression tried)
+- Feeding a few raw features (not just the two models' predictions) into the stacking meta-model, in case it finds something the base models missed
+
+## Code review readiness
+
+Zindi requires top-10 finishers to submit reproducible code within 48
+hours of being asked, and reserves the right to request it from anyone at
+any time. This repo is built to satisfy that from the start, not
+retrofitted after the fact:
+
+- **Every random seed is fixed** — see `SEEDS`/`RANDOM_STATE` constants in
+  `train.py`, `train_catboost.py`, and `blend.py`. Re-running produces the
+  same CV scores reported above.
+- **Only open-source packages** — LightGBM, CatBoost, XGBoost, scikit-learn,
+  Optuna, all public and free.
+- **No AutoML** — every model and feature was built and chosen manually;
+  Optuna is used only for a documented, bounded hyperparameter search
+  (`tune.py`), not full pipeline automation.
+- **Raw probabilities, not thresholded** — every submission script outputs
+  `predict_proba`-style continuous values, per the challenge's requirement.
+- **`requirements.txt` is version-pinned**, not just lower-bounded, since
+  tree-based models can shift slightly across library versions.
+- **`blend.py` runs standalone from raw `Train.csv`/`Test.csv`** — it
+  doesn't depend on any cached intermediate files from exploration, so a
+  fresh clone actually reproduces the submitted score end-to-end.
