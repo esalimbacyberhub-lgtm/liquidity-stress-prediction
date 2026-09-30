@@ -95,6 +95,21 @@ def _acceleration(df: pd.DataFrame, cols_recent_to_old: list[str]) -> np.ndarray
     return recent_delta - older_delta
 
 
+def _reversal(df: pd.DataFrame, cols_recent_to_old: list[str]) -> np.ndarray:
+    """
+    Discrete direction-flip flag: did the trend actually reverse sign between
+    the first and second half of the window (e.g. was rising, now falling, or
+    vice versa)? Distinct from acceleration (a continuous magnitude): a
+    customer whose balance kept rising but slower isn't the same as one whose
+    balance started FALLING after rising -- both could show similar
+    acceleration values but very different reversal flags.
+    """
+    values = df[cols_recent_to_old].to_numpy(dtype=float)
+    recent_delta = values[:, 0] - values[:, 2]
+    older_delta = values[:, 3] - values[:, 5]
+    return (np.sign(recent_delta) != np.sign(older_delta)).astype(int)
+
+
 def add_peer_relative_features(train_feat: pd.DataFrame, test_feat: pd.DataFrame):
     """
     Add peer-relative z-scores for balance trend features, computed within

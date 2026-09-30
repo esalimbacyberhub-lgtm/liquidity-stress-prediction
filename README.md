@@ -113,6 +113,30 @@ local optimum for this feature set, not a point where more model types
 would help without also finding a way to make the added model both
 different *and* individually strong.
 
+Two more angles were tried after that, both also negative:
+
+- **Feeding raw features directly into the stacking meta-model** (alongside
+  the two base models' predictions), in case the meta-learner could catch
+  cases where both models agreed but were both wrong. No change (0.2271
+  either way) — the base models were already trained on those exact
+  features, so showing them again added nothing.
+- **A small MLP neural network** as a third ensemble member — similar
+  story to logistic regression: genuinely decorrelated from the trees
+  (0.78 correlation) but too weak alone (0.284 combined) to help even when
+  the stacker tried to use it (0.2271, unchanged).
+- **Peer-relative z-scores grouped by income quartile** (`arpu`), not just
+  `segment`/`earning_pattern` — motivated by the error-analysis finding
+  that missed cases were higher-income. Stress rate does vary by income
+  tier (17.1% lowest quartile down to 12.5%, back up to 15.3% at the top),
+  but this information turned out to already be captured through
+  `segment`/`earning_pattern` (income likely correlates with those), since
+  adding it gave no improvement (0.233 vs 0.233).
+
+At this point, five distinct ensemble/feature ideas beyond the calibration
+fix have all failed to improve on 0.227. That consistency is itself useful
+information: this looks like a genuine ceiling for what this feature set
+and model family can extract, not a search that just needs to run longer.
+
 ## Approach
 
 The raw dataset gives one row per customer with 6 months (`m1` = most recent,
@@ -210,9 +234,9 @@ seconds.
 
 ## Next steps / ideas not yet implemented
 
-- Extending peer-relative z-scores to gender/smartphone/region groupings (only segment/earning_pattern tried, and the full-scale expansion to all 29 slopes was tested and didn't help — see "Where the model plateaus")
-- A fourth model that's both diverse AND individually strong (a neural net tuned properly, rather than the quick unoptimized logistic regression tried)
-- Feeding a few raw features (not just the two models' predictions) into the stacking meta-model, in case it finds something the base models missed
+- A fundamentally different feature source: clustering customers on behavior patterns (unsupervised) to see if cluster membership surfaces the "healthy trend but still stressed" subgroup found in error analysis, in a way manual grouping (segment/earning_pattern/income-quartile) hasn't
+- Hyperparameter tuning specifically for CatBoost (only LightGBM was tuned, and that tuning didn't help — but CatBoost's defaults were hand-picked, not searched)
+- Segment-specific models (training a separate model per customer segment) instead of one global model with segment-based features
 
 ## Code review readiness
 
