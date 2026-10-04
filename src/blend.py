@@ -15,7 +15,8 @@ comparison.
 This script re-runs both models' OOF and test predictions from scratch (it
 does not depend on any cached files from exploration), then stacks them.
 Expect this to take a while: LightGBM does 3 seeds x 5 folds, CatBoost does
-2 seeds x 5 folds -- roughly 15-20 minutes total on modest hardware.
+2 seeds x 5 folds, over 400+ features now that raw monthly values are
+included -- roughly 25-35 minutes total on modest hardware.
 
 Usage:
     python src/blend.py --train ../data/Train.csv --test ../data/Test.csv \

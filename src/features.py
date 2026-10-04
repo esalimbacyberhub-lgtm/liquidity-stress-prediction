@@ -15,7 +15,13 @@ monthly values but how they *change* over the 6-month window:
     share of what they receive (0.80 vs 0.50 median)
 
 This module turns the wide, repeated-per-month columns into a compact set
-of trend, volatility, and ratio features per customer.
+of trend, volatility, and ratio features per customer -- AND keeps all 6
+raw monthly values too (see _trend_features below). The EDA finding above
+is about univariate signal; it turned out a nonlinear model given the raw
+months directly, alongside the summaries, finds multi-way patterns (e.g.
+a spike specific to one month combined with another metric) that neither
+univariate checks nor hand-built summaries capture alone. This was the
+single biggest improvement found in this project -- see README "Results".
 """
 
 import numpy as np
@@ -77,7 +83,8 @@ def _trend_features(df: pd.DataFrame, cols_recent_to_old: list[str], name: str) 
     out[f"{name}_slope"] = _linear_slope(values_chrono)
     out[f"{name}_mean"] = mean_
     out[f"{name}_std"] = std_
-    out[f"{name}_m1"] = m1
+    for i, month in enumerate(MONTHS):
+        out[f"{name}_m{month}"] = values[:, i]
     return out
 
 
@@ -169,6 +176,7 @@ def build_features(df: pd.DataFrame) -> pd.DataFrame:
     bal_cols = [f"m{m}_daily_avg_bal" for m in MONTHS]
     feature_frames.append(_trend_features(df, bal_cols, "bal"))
     feature_frames.append(pd.DataFrame({"bal_acceleration": _acceleration(df, bal_cols)}, index=df.index))
+    feature_frames.append(pd.DataFrame({"bal_reversal": _reversal(df, bal_cols)}, index=df.index))
 
     # personalized "low balance" flag: number of months below the customer's own median
     bal_values = df[bal_cols].to_numpy(dtype=float)

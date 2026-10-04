@@ -21,14 +21,32 @@ stress in the next 30 days, using six months of transaction history.
 | LightGBM, peer-relative expanded to 4 more trend features | 0.294 | 0.868 | 0.229 |
 | CatBoost, same expanded features, 2-seed bagged | 0.295 | 0.866 | 0.230 |
 | LightGBM + CatBoost blend, 60/40 (fixed weight) | 0.294 | 0.869 | 0.228 |
-| **LightGBM + CatBoost, logistic stacking in logit space (final)** | **0.291** | **0.869** | **0.227** |
+| LightGBM + CatBoost, logistic stacking in logit space | 0.291 | 0.869 | 0.227 |
+| + balance reversal flag | 0.290 | 0.870 | 0.226 |
+| **+ all raw monthly values exposed (final)** | **0.262** | **0.896** | **0.199** |
 
-Model blending gave the single biggest gain of any change tried, and
-extending the peer-relative z-score trick (originally just balance trend
-vs. segment) to also cover deposit, received, withdraw, and bank-transfer
-trends gave the second-biggest gain — both models improved when given the
-richer feature set, confirming the peer-relative approach generalizes
-beyond the one feature it was first tried on.
+**By far the single biggest gain of the whole project: exposing all 6
+months of raw per-metric values directly to the models**, not just the
+engineered trend/volatility/ratio summaries built from them. Every prior
+round of feature engineering (acceleration, composition, peer-relative
+z-scores, the reversal flag) compressed the 6-month window into summary
+statistics — which necessarily throws away information. A tree model given
+the raw month-by-month values directly can find patterns no hand-built
+summary captures (e.g. a spike specific to month 3, or a threshold
+crossing in month 5 combined with month 2 behavior). This alone dropped
+combined score from 0.226 to 0.199 — bigger than every other improvement
+in this project *combined*. Validated across 3 LightGBM seeds (0.2007,
+0.2036, 0.2032) and 2 CatBoost seeds (0.2065, 0.2059), each a full 5-fold
+CV, not a lucky single fold. Feature count roughly doubled (289 → 434 for
+LightGBM) but the summary features were kept too, not replaced — they
+still help, the raw values just add what they were missing.
+
+Model blending was the second-biggest lever, and extending the
+peer-relative z-score trick (originally just balance trend vs. segment) to
+also cover deposit, received, withdraw, and bank-transfer trends gave
+another real gain — both models improved when given the richer feature
+set, confirming the peer-relative approach generalizes beyond the one
+feature it was first tried on.
 
 The blend weight shifted from 50/50 to 60/40 (favoring LightGBM slightly)
 after the feature expansion, found via the same CV grid search approach
@@ -132,10 +150,30 @@ Two more angles were tried after that, both also negative:
   `segment`/`earning_pattern` (income likely correlates with those), since
   adding it gave no improvement (0.233 vs 0.233).
 
-At this point, five distinct ensemble/feature ideas beyond the calibration
-fix have all failed to improve on 0.227. That consistency is itself useful
-information: this looks like a genuine ceiling for what this feature set
-and model family can extract, not a search that just needs to run longer.
+At this point, five distinct **model-ensembling** ideas beyond the
+calibration fix all failed to improve on 0.227 — that looks like a genuine
+ceiling specifically for "add another model to the ensemble" as a lever.
+The feature-engineering side turned out to have one more real idea left in
+it, described next.
+
+## A feature that looked like noise but wasn't
+
+`bal_reversal` — a flag for whether a customer's balance trend actually
+*flipped direction* between the first and second half of the 6-month
+window (was rising, then started falling, or vice versa), as distinct
+from acceleration (a magnitude of change that doesn't care about sign
+flips). On its own, this feature looks like nothing: 49.3% of stressed
+customers have it set vs. 50.1% of non-stressed customers — essentially
+random. But adding it to the model improved combined CV score from 0.229
+to 0.228 (LightGBM alone), and it survived full 3-seed bagging (unlike the
+`overspend_vs_arpu` feature from the plateau section above, which looked
+promising single-seed and vanished under bagging). The likely explanation:
+tree models can use a weak-looking feature productively in combination
+with others (e.g., a reversal matters more for some segments/income levels
+than others) even when its standalone correlation with the target is near
+zero. Worth remembering as a general lesson: don't judge a candidate
+feature by its univariate correlation alone, and don't assume a plateau in
+one lever (ensembling) means the whole model has plateaued.
 
 ## Approach
 
@@ -173,6 +211,18 @@ Results table):
   value/volume each type (withdrawals, paybill, etc.) represents in the
   most recent month
 
+A fourth, much larger change came later: **exposing all 6 months of raw
+values directly**, not just the summary statistics built from them (see
+Results table — this was the single biggest improvement in the project).
+Worth being precise about why this doesn't contradict the EDA finding
+above: the raw monthly values genuinely do carry weak *univariate* signal
+(checking one raw column against the target shows little), but a
+nonlinear tree model given dozens of raw monthly columns together can
+find multi-way interactions (specific month + specific other-metric
+combinations) that no univariate check or hand-built summary statistic
+can surface. Summary features and raw values were kept together, not
+swapped — they're complementary, not competing.
+
 **Model:** LightGBM (binary classification), 5-fold stratified CV, no
 explicit class reweighting — the ~15% positive rate isn't severe enough to
 need it here, and reweighting was tested and made both log loss and AUC
@@ -200,7 +250,7 @@ reference, also not adopted — see "Ensemble diversity" above for why.
 ├── notebooks/
 │   └── eda.ipynb          # exploratory analysis behind the findings above
 └── src/
-    ├── features.py        # feature engineering (trend/volatility/ratio/peer-relative features)
+    ├── features.py        # feature engineering (raw monthly values + trend/volatility/ratio/peer-relative features)
     ├── train.py            # LightGBM: CV training, evaluation, submission generation
     ├── train_catboost.py   # CatBoost: same features, native categorical handling
     ├── blend.py            # trains both models and blends predictions (final pipeline)
@@ -229,11 +279,14 @@ python train_catboost.py --train ../data/Train.csv --test ../data/Test.csv --out
 ```
 
 Note: `blend.py` trains both models from scratch (LightGBM: 3 seeds × 5
-folds; CatBoost: 2 seeds × 5 folds), so expect 15-20 minutes to run, not
-seconds.
+folds; CatBoost: 2 seeds × 5 folds), with a larger feature set now that
+raw monthly values are included (400+ columns), so expect 25-35 minutes
+to run on modest hardware, not seconds.
 
 ## Next steps / ideas not yet implemented
 
+- Extending the reversal-flag idea to other transaction types (only balance tried — deposit, withdraw, or received reversals might carry similar signal)
+- Extending peer-relative z-scores to the raw monthly values too (currently only applied to the engineered trend/slope summaries, not the raw per-month columns added later)
 - A fundamentally different feature source: clustering customers on behavior patterns (unsupervised) to see if cluster membership surfaces the "healthy trend but still stressed" subgroup found in error analysis, in a way manual grouping (segment/earning_pattern/income-quartile) hasn't
 - Hyperparameter tuning specifically for CatBoost (only LightGBM was tuned, and that tuning didn't help — but CatBoost's defaults were hand-picked, not searched)
 - Segment-specific models (training a separate model per customer segment) instead of one global model with segment-based features
