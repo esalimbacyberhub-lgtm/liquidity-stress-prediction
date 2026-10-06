@@ -138,6 +138,18 @@ def add_peer_relative_features(train_feat: pd.DataFrame, test_feat: pd.DataFrame
         "received_total_value_slope",
         "withdraw_total_value_slope",
         "transfer_from_bank_total_value_slope",
+        # Raw mid-period values -- added after feature importance on the
+        # raw-months model showed bal_m2/m3/m4 and deposit/received_m2/m3
+        # ranked above most engineered summary features. "Normal for your
+        # segment" may apply to a raw mid-period value just as much as to
+        # a trend.
+        "bal_m2",
+        "bal_m3",
+        "bal_m4",
+        "deposit_total_value_m2",
+        "deposit_total_value_m3",
+        "received_total_value_m2",
+        "received_total_value_m3",
     ]
     base_cols = [c for c in base_cols if c in train_feat.columns]
     group_cols = ["segment", "earning_pattern"]
@@ -207,6 +219,7 @@ def build_features(df: pd.DataFrame) -> pd.DataFrame:
                 feature_frames.append(
                     pd.DataFrame({f"{feat_name}_acceleration": _acceleration(df, cols_recent_to_old)}, index=df.index)
                 )
+
             elif metric_name == "volume":
                 per_type_m1_volume[txn] = df[cols_recent_to_old[0]]
 

@@ -23,7 +23,8 @@ stress in the next 30 days, using six months of transaction history.
 | LightGBM + CatBoost blend, 60/40 (fixed weight) | 0.294 | 0.869 | 0.228 |
 | LightGBM + CatBoost, logistic stacking in logit space | 0.291 | 0.869 | 0.227 |
 | + balance reversal flag | 0.290 | 0.870 | 0.226 |
-| **+ all raw monthly values exposed (final)** | **0.262** | **0.896** | **0.199** |
+| + all raw monthly values exposed | 0.262 | 0.896 | 0.199 |
+| **+ peer-relative z-scores on raw mid-month values (final)** | **0.258** | **0.899** | **0.195** |
 
 **By far the single biggest gain of the whole project: exposing all 6
 months of raw per-metric values directly to the models**, not just the
@@ -41,12 +42,38 @@ CV, not a lucky single fold. Feature count roughly doubled (289 → 434 for
 LightGBM) but the summary features were kept too, not replaced — they
 still help, the raw values just add what they were missing.
 
-Model blending was the second-biggest lever, and extending the
-peer-relative z-score trick (originally just balance trend vs. segment) to
-also cover deposit, received, withdraw, and bank-transfer trends gave
-another real gain — both models improved when given the richer feature
-set, confirming the peer-relative approach generalizes beyond the one
-feature it was first tried on.
+**Second-biggest gain after that: feature importance on the raw-months
+model showed `bal_m2`/`m3`/`m4` and `deposit`/`received_total_value_m2`/`m3`
+ranking above most engineered summaries** — the middle months, not just
+the endpoints the trend features focused on. Two follow-up ideas were
+tried:
+
+- **Dip/spike features** (how far a middle month falls below or rises
+  above the average of the two endpoints) — negative result (0.2038 vs
+  0.2034 single-seed, essentially unchanged/slightly worse). Once the raw
+  monthly values are already exposed to the model, it can already
+  construct a "dip" via its own splits across those same columns — a
+  hand-engineered summary of data the model can already see directly is
+  usually redundant. Reverted.
+- **Peer-relative z-scores extended to raw mid-month values** (e.g.
+  `bal_m3` compared to the customer's `segment` average, not just
+  `bal_slope`) — this is a different kind of addition: it's not
+  re-deriving something from the existing raw column, it's adding
+  *external context* (a peer-group average) the model has no way to
+  construct on its own. Real, validated gain: 0.199 → 0.195.
+
+This pair is a useful contrast: once raw data is exposed, more
+derivatives *of that same data* tend to be redundant, but genuinely new
+context (peer comparison) is not — the test is whether the model could
+have built the feature itself from what it already sees, not whether the
+feature sounds reasonable.
+
+Model blending was also a real lever, and extending the peer-relative
+z-score trick (originally just balance trend vs. segment) to also cover
+deposit, received, withdraw, and bank-transfer trend features gave
+another gain — both models improved when given the richer feature set,
+confirming the peer-relative approach generalizes beyond the one feature
+it was first tried on.
 
 The blend weight shifted from 50/50 to 60/40 (favoring LightGBM slightly)
 after the feature expansion, found via the same CV grid search approach
@@ -203,10 +230,11 @@ Results table):
 - **Acceleration** — whether a decline is speeding up or slowing down
   (recent 3-month change vs. prior 3-month change), not just the overall
   6-month direction
-- **Peer-relative z-scores** — a customer's balance trend compared to
-  others in the same `segment`/`earning_pattern` (group stats computed from
-  train only, to avoid leakage) — this turned out to be the single most
-  useful feature in the model
+- **Peer-relative z-scores** — a customer's balance trend (and later, raw
+  mid-month values too — see below) compared to others in the same
+  `segment`/`earning_pattern` (group stats computed from train only, to
+  avoid leakage) — this turned out to be the single most useful feature
+  in the model
 - **Spending composition** — what share of a customer's total transaction
   value/volume each type (withdrawals, paybill, etc.) represents in the
   most recent month
@@ -286,7 +314,7 @@ to run on modest hardware, not seconds.
 ## Next steps / ideas not yet implemented
 
 - Extending the reversal-flag idea to other transaction types (only balance tried — deposit, withdraw, or received reversals might carry similar signal)
-- Extending peer-relative z-scores to the raw monthly values too (currently only applied to the engineered trend/slope summaries, not the raw per-month columns added later)
+- Extending peer-relative z-scores to more raw mid-month columns (only balance and deposit/received totals tried — withdraw, paybill, transfer_from_bank mid-months not yet covered)
 - A fundamentally different feature source: clustering customers on behavior patterns (unsupervised) to see if cluster membership surfaces the "healthy trend but still stressed" subgroup found in error analysis, in a way manual grouping (segment/earning_pattern/income-quartile) hasn't
 - Hyperparameter tuning specifically for CatBoost (only LightGBM was tuned, and that tuning didn't help — but CatBoost's defaults were hand-picked, not searched)
 - Segment-specific models (training a separate model per customer segment) instead of one global model with segment-based features
