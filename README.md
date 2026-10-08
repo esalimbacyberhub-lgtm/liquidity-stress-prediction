@@ -24,7 +24,8 @@ stress in the next 30 days, using six months of transaction history.
 | LightGBM + CatBoost, logistic stacking in logit space | 0.291 | 0.869 | 0.227 |
 | + balance reversal flag | 0.290 | 0.870 | 0.226 |
 | + all raw monthly values exposed | 0.262 | 0.896 | 0.199 |
-| **+ peer-relative z-scores on raw mid-month values (final)** | **0.258** | **0.899** | **0.195** |
+| + peer-relative z-scores on raw mid-month values | 0.258 | 0.899 | 0.195 |
+| **+ finer peer group: segment x earning_pattern (final)** | **0.257** | **0.900** | **0.1945** |
 
 **By far the single biggest gain of the whole project: exposing all 6
 months of raw per-metric values directly to the models**, not just the
@@ -130,6 +131,25 @@ the 6-month transaction history entirely (a shock event — job loss,
 medical bill, family emergency), which no amount of historical-pattern
 feature engineering can predict. This is a plausible reason the leaderboard
 tops out around 0.74 rather than near-perfect, not just a modeling gap.
+
+## Diminishing returns in the peer-relative family
+
+Feature importance on the v9 model showed peer-relative features dominating:
+11 of the top 15 are `_z_by_segment` versions, and `bal_slope_z_by_segment`
+is #1 by roughly 3x over the next feature. Two follow-ups:
+
+- **Z-scoring more columns** (`bal_m5`, `withdraw` and `transfer_from_bank`
+  mid-months, `withdraw_highest_amount_slope`) -- exploratory run scored
+  0.2001, identical to v9 single-seed. No gain; dropped.
+- **A finer peer group** (`segment` x `earning_pattern`, 9 groups, smallest
+  572 customers) -- small gain. LightGBM 3-seed bagged 0.1971 -> 0.1965;
+  CatBoost 2-seed bagged 0.1994 -> 0.1989 (flat on seed 42, slightly better
+  on seed 7); stacked 0.1951 -> 0.1945. All three LightGBM seeds improved,
+  but the gain is about 0.0006 -- an order of magnitude smaller than the
+  raw-months change. Not a new kind of improvement, just a refinement.
+
+The pattern across the project: one structural change (exposing raw monthly
+values) gave a large jump; everything since has been small increments.
 
 ## Ensemble diversity: what else was tried
 
@@ -314,7 +334,6 @@ to run on modest hardware, not seconds.
 ## Next steps / ideas not yet implemented
 
 - Extending the reversal-flag idea to other transaction types (only balance tried — deposit, withdraw, or received reversals might carry similar signal)
-- Extending peer-relative z-scores to more raw mid-month columns (only balance and deposit/received totals tried — withdraw, paybill, transfer_from_bank mid-months not yet covered)
 - A fundamentally different feature source: clustering customers on behavior patterns (unsupervised) to see if cluster membership surfaces the "healthy trend but still stressed" subgroup found in error analysis, in a way manual grouping (segment/earning_pattern/income-quartile) hasn't
 - Hyperparameter tuning specifically for CatBoost (only LightGBM was tuned, and that tuning didn't help — but CatBoost's defaults were hand-picked, not searched)
 - Segment-specific models (training a separate model per customer segment) instead of one global model with segment-based features

@@ -154,6 +154,18 @@ def add_peer_relative_features(train_feat: pd.DataFrame, test_feat: pd.DataFrame
     base_cols = [c for c in base_cols if c in train_feat.columns]
     group_cols = ["segment", "earning_pattern"]
 
+    # Finer peer group: segment AND earning_pattern combined (9 groups,
+    # smallest has 572 customers -- still enough for stable mean/std).
+    # Motivated by bal_slope_z_by_segment being the dominant feature by a
+    # wide margin -- testing whether a sharper "peer" definition helps more
+    # than z-scoring more columns (which plateaued -- see README).
+    if "segment" in train_feat.columns and "earning_pattern" in train_feat.columns:
+        for feat in (train_feat, test_feat):
+            feat["segment_x_earning_pattern"] = (
+                feat["segment"].astype(str) + "_" + feat["earning_pattern"].astype(str)
+            )
+        group_cols.append("segment_x_earning_pattern")
+
     for group_col in group_cols:
         if group_col not in train_feat.columns:
             continue
@@ -167,6 +179,13 @@ def add_peer_relative_features(train_feat: pd.DataFrame, test_feat: pd.DataFrame
                 mapped_mean = feat[group_col].map(group_mean)
                 mapped_std = feat[group_col].map(group_std)
                 feat[new_col] = (feat[base_col] - mapped_mean) / mapped_std
+
+    # Drop the temporary helper grouping column -- it's a raw string, only
+    # needed above to compute the z-score features, not a model input
+    # itself (and encode_categoricals doesn't know to one-hot it).
+    for feat in (train_feat, test_feat):
+        if "segment_x_earning_pattern" in feat.columns:
+            feat.drop(columns=["segment_x_earning_pattern"], inplace=True)
 
     return train_feat, test_feat
 
