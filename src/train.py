@@ -36,8 +36,8 @@ LGB_PARAMS = {
     "metric": "binary_logloss",
     "boosting_type": "gbdt",
     "learning_rate": 0.03,
-    "num_leaves": 31,
-    "min_data_in_leaf": 40,
+    "num_leaves": 15,  # was 31; smaller trees scored ~0.001 better on the 460+ feature set (seeds 42 & 7)
+    "min_data_in_leaf": 60,
     "feature_fraction": 0.8,
     "bagging_fraction": 0.8,
     "bagging_freq": 1,

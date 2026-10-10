@@ -251,6 +251,36 @@ def build_features(df: pd.DataFrame) -> pd.DataFrame:
             ratio_frame[f"{txn}_to_received_ratio_m1"] = df[col] / received_m1
     feature_frames.append(ratio_frame)
 
+    # --- Per-month cash-flow features (all 6 months, not just month 1) ---
+    # Trees split on one column at a time, so a quantity like "money out
+    # minus money in" or "outflow / inflow" is hard for them to build from
+    # separate columns. These make it explicit for every month, and relate
+    # each month's balance change to that month's flows.
+    inflow_types = ["received", "deposit", "transfer_from_bank"]
+    outflow_types = ["withdraw", "paybill", "merchantpay", "mm_send"]
+    flow_cols = {}
+    for m in MONTHS:
+        inflow = sum(df[f"m{m}_{t}_total_value"] for t in inflow_types if f"m{m}_{t}_total_value" in df.columns)
+        outflow = sum(df[f"m{m}_{t}_total_value"] for t in outflow_types if f"m{m}_{t}_total_value" in df.columns)
+        flow_cols[f"net_flow_m{m}"] = inflow - outflow
+        flow_cols[f"outflow_to_inflow_m{m}"] = outflow / inflow.replace(0, np.nan)
+    for m in MONTHS[:-1]:  # balance change into month m from the older month m+1
+        bal_delta = df[f"m{m}_daily_avg_bal"] - df[f"m{m+1}_daily_avg_bal"]
+        flow_cols[f"bal_delta_m{m}"] = bal_delta
+        flow_cols[f"bal_delta_minus_netflow_m{m}"] = bal_delta - flow_cols[f"net_flow_m{m}"]
+    feature_frames.append(pd.DataFrame(flow_cols, index=df.index))
+
+    # --- Month-over-month differences in total value, per transaction type ---
+    # Raw levels are already exposed; a difference between adjacent months
+    # takes two splits to approximate from levels, so make it explicit.
+    diff_cols = {}
+    for txn in TXN_TYPES:
+        for m in MONTHS[:-1]:
+            newer, older = f"m{m}_{txn}_total_value", f"m{m+1}_{txn}_total_value"
+            if newer in df.columns and older in df.columns:
+                diff_cols[f"{txn}_total_value_diff_m{m}"] = df[newer] - df[older]
+    feature_frames.append(pd.DataFrame(diff_cols, index=df.index))
+
     # --- Spending composition: each type's share of total activity in month 1 ---
     # Captures WHERE money goes, not just how much -- two customers with the
     # same total withdrawal amount can look very different if one customer's

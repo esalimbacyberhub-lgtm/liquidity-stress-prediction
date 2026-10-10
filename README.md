@@ -25,7 +25,8 @@ stress in the next 30 days, using six months of transaction history.
 | + balance reversal flag | 0.290 | 0.870 | 0.226 |
 | + all raw monthly values exposed | 0.262 | 0.896 | 0.199 |
 | + peer-relative z-scores on raw mid-month values | 0.258 | 0.899 | 0.195 |
-| **+ finer peer group: segment x earning_pattern (final)** | **0.257** | **0.900** | **0.1945** |
+| + finer peer group: segment x earning_pattern | 0.257 | 0.900 | 0.1945 |
+| **+ cash-flow features, month-over-month differences, smaller trees (final)** | **0.254** | **0.902** | **0.1918** |
 
 **By far the single biggest gain of the whole project: exposing all 6
 months of raw per-metric values directly to the models**, not just the
@@ -150,6 +151,31 @@ is #1 by roughly 3x over the next feature. Two follow-ups:
 
 The pattern across the project: one structural change (exposing raw monthly
 values) gave a large jump; everything since has been small increments.
+
+## Month-over-month differences and cash-flow features
+
+After v10, three more changes were tested (all LightGBM, 5-fold CV):
+
+| Seed 42 | Combined |
+|---|---|
+| v10 | 0.1996 |
+| + smaller trees (`num_leaves=15`, `min_data_in_leaf=60`) | 0.1986 |
+| + per-month cash-flow features (net flow, outflow/inflow, balance change vs flows) | 0.1982 |
+| + month-over-month differences in total value, per transaction type | **0.1961** |
+
+The differences feature set was validated on three seeds against v10: gains of
+0.0035 (seed 42), 0.0029 (seed 7) and 0.0040 (seed 123). The 3-seed bagged
+LightGBM score went from 0.1965 to **0.1937**. The cash-flow block and the
+smaller-tree setting were only checked on one or two seeds on their own, so
+their individual contributions are less certain than the combined gain.
+
+**Caveat on the current submission:** the v11 stack combines this new
+LightGBM bag with the *v10* CatBoost predictions (trained on the earlier feature
+set), because rebuilding CatBoost on the new features takes about ten more runs.
+Stacked CV is 0.1918 (v10 stack: 0.1945). `blend.py` as written retrains CatBoost
+on the *current* features, so re-running it will not reproduce that exact
+submission; rebuilding CatBoost on the new features and re-stacking is the open
+item before treating this as the reproducible final.
 
 ## Ensemble diversity: what else was tried
 
